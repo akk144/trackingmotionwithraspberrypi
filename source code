@@ -1,0 +1,145 @@
+/*This document contains the program and explanation for object detection and tracking motion and sending a video of it via email.One can use this program as it is totally free.the different steps of the program is:*/
+
+
+#include <iostream>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
+#include <stdio.h>
+
+using namespace std;
+using namespace cv;
+
+int main(int argc,char** argv)
+{
+	Mat src,src2,dst,thresh,img;
+
+	int f=0,flag=0,t=0,a=0,s=0;
+
+	vector<vector<Point> >contours;
+
+	vector<Vec4i>hierarchy;
+
+	RNG rng(12345);
+
+	namedWindow("out",CV_WINDOW_AUTOSIZE);
+
+	//input object to capture images from webcam
+
+	CvCapture* cap;
+	cap = cvCaptureFromCAM(0);
+
+	//output writer that writes the frames to the output video
+
+	VideoWriter outputVideo;
+
+	Size S = Size((int)cvGetCaptureProperty(cap,CV_CAP_PROP_FRAME_WIDTH),
+		      		(int)cvGetCaptureProperty(cap,CV_CAP_PROP_FRAME_HEIGHT));
+
+	//then you open the output video where to write with given parmeters
+
+	outputVideo.open("motion.avi",CV_FOURCC('X','V','I','D'),1,S,true);
+ 
+/*Here,”motion.avi” is the name of your final file,CV_FOURCC is a four letter codec that is used for different images and videos,1 is the frame rate of output video,S is the size,true is for color video(if false-it will be grayscale)*/
+	
+	if(!outputVideo.isOpened())
+	{
+		cout<<"could not open file to write"<<endl;
+		return -1;
+	}
+	
+	//this loop will track motion forever until someone presses the Esc key
+
+	while(true)
+	{
+	img = cvQueryFrame(cap);
+	
+cvtColor(img,src,CV_BGR2GRAY); /*convert the source image to gray as we want to detect image in 1-D only*/
+
+/*next step is to remove noise,so you apply filter to remove it.I have used Gaussian one with kernel 7 standarddeviations 0,0 in both directions,you can apply different blurs with different kernels as per your use*/
+
+	GaussianBlur(src,src,Size(7,7),0,0);
+
+/*as we have to compare two consecutive frames for tracking motion,we have to copy image from cam to src2 to initialize it(as it was empty)*/
+
+	if(f==0)
+	src.copyTo(src2);
+
+	//frame comparison starts from second frame
+
+	if(f>0)
+	{
+		absdiff(src,src2,dst);
+/*this is the function which will find the absolute differences of each pixel in the two consecutive frames and store the result in dst*/
+
+		dst = dst.mul(dst);
+
+//to remove negative pixels we have squared the dst
+
+		int s = sum(dst)[0];
+
+/*then sum up whole pixels in the dst which will work for the threshold value,as for my case I had taken 90000 but you change it as your requirement*/
+
+		if(s>90000)
+		{
+		t++;
+
+/*this is the variable that will iterates,if its values goes above 5 the detected motion will be send via email*/	
+		
+		threshold(dst,thresh,254,255,THRESH_BINARY);
+
+//I had applied threshold to get only the white regions of an image dst
+		findContours(thresh,contours,hierarchy,CV_RETR_EXTERNAL,CV_CHAIN_APPROX_TC89_KCOS,Point(0,0));
+
+/*This is the function which is used to find the contours of an grayscale image
+And will store the result in a Mat object contours*/
+
+		vector<Rect>boundRect(contours.size());
+
+//vector for bounding Rectangles in an image
+
+		vector<vector<Point> >hull( contours.size() );
+//2D vector for convex hull
+
+		for( int i = 0; i < contours.size(); i++ )
+		{
+convexHull( Mat(contours[i]), hull[i], false );
+			boundRect[i] = boundingRect(hull[i]);
+}
+//draw the convex hull for each object in an image
+ 
+		Mat drawing = Mat::zeros(thresh.size(),CV_8UC3);
+			for(int i= 0;i<contours.size();i++)
+if(boundRect[i].width>=20 || boundRect[i].height>=30) rectangle(drawing,r[i].tl(),r[i].br(),Scalar(0,0,255),2,8,0);
+
+
+//to draw the bounding boxes across the hulls
+
+		addWeighted(img,0.5,drawing,0.5,0.0,img);
+
+/*as we have made the bounding boxes in an grayscale image,and we have to show it in color image(RGB one) so we blend both the images*/
+
+		outputVideo.write(img);
+//finally we write the frames to the output video file
+		}
+		else
+		t=0;
+
+//this will put the tick to track motion to zero if the motion is less than 5 frames
+		
+		if(t>=5)
+		{
+		system("echo 'this is the test' | mutt -s Testing -a motion.avi --    akansh_agrawal25@yahoo.com");
+		t=0;
+
+/*the system call will send the email to the specific email address given with the video 
+t again is set to zero,so that after 5 frames again it will send the email*/
+		}
+
+	}
+	src.copyTo(src2);
+	f++;
+	waitKey(5);
+	}
+return 0;
+}
